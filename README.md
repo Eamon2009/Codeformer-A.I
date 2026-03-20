@@ -264,5 +264,9 @@ If you want meaningfully better output, the highest-impact thing you can do is *
 - **Output will not compile** — this is a style learner, not a code generator
 
 ---
+# licence
+
+MIT
+---
 
 *Built with PyTorch. Architecture based on Andrej Karpathy's nanoGPT.*

@@ -3,9 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import time
 import sys
-import subprocess
 import os
-import atexit
 from config.config import *
 
 print("=" * 60)
@@ -17,18 +15,17 @@ print(f"[INFO] Using device: {'cuda' if torch.cuda.is_available() else 'cpu'}")
 start = time.time()
 
 # Hyperparameters
+batch_size    = 16
+block_size    = 128
+max_iters     = 3000
+eval_interval = 200
 learning_rate = 3e-4
-device        = 'cuda' if torch.cuda.is_available() else 'cpu'  #my case cpu
-eval_iters    = 200
+device        = 'cuda' if torch.cuda.is_available() else 'cpu'
+eval_iters    = 50
+n_embd        = 128
+n_head        = 4
+n_layer       = 4
 dropout       = 0.2
-batch_size    = 16     # was 64
-block_size    = 128    # was 256
-n_embd        = 128    # was 384
-n_head        = 4      # was 6
-n_layer       = 4      # was 6
-eval_iters    = 50     # was 200
-eval_interval = 200    # was 100
-max_iters     = 3000   # was 5000
 
 print(f"\n[CONFIG] Hyperparameters loaded:")
 print(f"         batch_size={batch_size}, block_size={block_size}")
@@ -221,8 +218,10 @@ for iter in range(max_iters):
         pct      = 100 * iter / max_iters
         eta_secs = (elapsed / (iter + 1)) * (max_iters - iter - 1) if iter > 0 else 0
         improved = " << best!" if losses['val'] < best_val_loss else ""
+
         if losses['val'] < best_val_loss:
             best_val_loss = losses['val']
+            torch.save(model.state_dict(), 'best_model.pt')
 
         print(f"[{iter:>5}/{max_iters}] {pct:5.1f}%  "
               f"train={losses['train']:.4f}  val={losses['val']:.4f}  "
@@ -238,155 +237,31 @@ for iter in range(max_iters):
 total_time = time.time() - train_start
 print(f"\n[DONE]  Training finished in {total_time:.1f}s "
       f"({total_time / 60:.1f} min)  |  Best val loss: {best_val_loss:.4f}")
+print(f"[SAVE]  Best weights saved to best_model.pt")
 
 
-# ── Save weights + vocab for generation window ─────────────
-_base         = os.path.dirname(os.path.abspath(__file__))
-_weights_path = os.path.join(_base, "_gen_weights.pt")
-_vocab_path   = os.path.join(_base, "_gen_vocab.pt")
-_gen_script   = os.path.join(_base, "_gen_worker.py")
+# ── Infinite generation in same terminal ───────────────────
+print(f"\n{'─' * 60}")
+print(f"  MODEL OUTPUT  (Ctrl+C to stop)")
+print(f"{'─' * 60}\n")
 
-atexit.register(lambda: [os.remove(p) for p in
-                 [_weights_path, _vocab_path, _gen_script] if os.path.exists(p)])
-
-torch.save(model.state_dict(), _weights_path)
-torch.save({'stri': stri, 'it': it, 'vocab_size': vocab_size}, _vocab_path)
-
-
-# ── Write worker script 
-_gen_code = f"""import torch
-import torch.nn as nn
-from torch.nn import functional as F
-
-device     = '{device}'
-n_embd     = {n_embd}
-n_head     = {n_head}
-n_layer    = {n_layer}
-dropout    = {dropout}
-block_size = {block_size}
-
-vocab      = torch.load(r'{_vocab_path}', map_location='cpu')
-it         = vocab['it']
-vocab_size = vocab['vocab_size']
-decode     = lambda l: ''.join([it[i] for i in l])
-
-class Head(nn.Module):
-    def __init__(self, hs):
-        super().__init__()
-        self.key   = nn.Linear(n_embd, hs, bias=False)
-        self.query = nn.Linear(n_embd, hs, bias=False)
-        self.value = nn.Linear(n_embd, hs, bias=False)
-        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
-        self.dropout = nn.Dropout(dropout)
-    def forward(self, x):
-        B, T, C = x.shape
-        k = self.key(x); q = self.query(x)
-        wei = q @ k.transpose(-2,-1) * k.shape[-1]**-0.5
-        wei = wei.masked_fill(self.tril[:T,:T]==0, float('-inf'))
-        wei = F.softmax(wei, dim=-1)
-        wei = self.dropout(wei)
-        return wei @ self.value(x)
-
-class MultiHeadAttention(nn.Module):
-    def __init__(self, num_heads, hs):
-        super().__init__()
-        self.heads   = nn.ModuleList([Head(hs) for _ in range(num_heads)])
-        self.proj    = nn.Linear(hs * num_heads, n_embd)
-        self.dropout = nn.Dropout(dropout)
-    def forward(self, x):
-        return self.dropout(self.proj(torch.cat([h(x) for h in self.heads], dim=-1)))
-
-class FeedFoward(nn.Module):
-    def __init__(self, n_embd):
-        super().__init__()
-        self.net = nn.Sequential(nn.Linear(n_embd, 4*n_embd), nn.ReLU(),
-                                 nn.Linear(4*n_embd, n_embd), nn.Dropout(dropout))
-    def forward(self, x): return self.net(x)
-
-class Block(nn.Module):
-    def __init__(self, n_embd, n_head):
-        super().__init__()
-        hs = n_embd // n_head
-        self.sa   = MultiHeadAttention(n_head, hs)
-        self.ffwd = FeedFoward(n_embd)
-        self.ln1  = nn.LayerNorm(n_embd)
-        self.ln2  = nn.LayerNorm(n_embd)
-    def forward(self, x):
-        x = x + self.sa(self.ln1(x))
-        x = x + self.ffwd(self.ln2(x))
-        return x
-
-class GPTLanguageModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.token_embedding_table    = nn.Embedding(vocab_size, n_embd)
-        self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.blocks = nn.Sequential(*[Block(n_embd, n_head) for _ in range(n_layer)])
-        self.ln_f   = nn.LayerNorm(n_embd)
-        self.lm_head= nn.Linear(n_embd, vocab_size)
-    def forward(self, idx):
-        tok = self.token_embedding_table(idx)
-        pos = self.position_embedding_table(torch.arange(idx.shape[1], device=device))
-        x   = self.ln_f(self.blocks(tok + pos))
-        return self.lm_head(x)
-
-print("=" * 55)
-print("  GPT INFINITE GENERATION  |  Ctrl+C to stop")
-print("=" * 55)
-print("Loading weights...", end=" ", flush=True)
-model = GPTLanguageModel().to(device)
-model.load_state_dict(torch.load(r'{_weights_path}', map_location=device))
 model.eval()
-print("Ready!\\n")
+context = torch.zeros((1, 1), dtype=torch.long, device=device)
 
-idx = torch.zeros((1, 1), dtype=torch.long, device=device)
 try:
-    while True:
-        with torch.no_grad():
-            idx_cond = idx[:, -block_size:]
-            logits   = model(idx_cond)[:, -1, :]
-            probs    = F.softmax(logits, dim=-1)
-            idx_next = torch.multinomial(probs, num_samples=1)
-            idx      = torch.cat((idx, idx_next), dim=1)
-            if idx.shape[1] > block_size:
-                idx = idx[:, -block_size:]
+    with torch.no_grad():
+        while True:
+            idx_cond = context[:, -block_size:]
+            logits, _ = model(idx_cond)
+            logits    = logits[:, -1, :]
+            probs     = F.softmax(logits, dim=-1)
+            idx_next  = torch.multinomial(probs, num_samples=1)
+            context   = torch.cat((context, idx_next), dim=1)
+            if context.shape[1] > block_size:
+                context = context[:, -block_size:]
             print(decode([idx_next[0].item()]), end='', flush=True)
 except KeyboardInterrupt:
-    print("\\n\\n[Stopped by user]")
-input("\\nPress Enter to close...")
-"""
-
-with open(_gen_script, 'w', encoding='utf-8') as f:
-    f.write(_gen_code)
-
-
-# ── Launch new CMD window (Windows only) 
-print(f"\n[GEN]   Launching generation window...")
-try:
-    subprocess.Popen(
-        f'start cmd /k "{sys.executable}" "{_gen_script}"',
-        shell=True
-    )
-    print("[GEN]   Generation window launched. Close it anytime to stop.")
-except Exception as e:
-    print(f"[GEN]   Failed to open window: {e}")
-    print("[GEN]   Running generation here instead:\n")
-    model.eval()
-    context = torch.zeros((1, 1), dtype=torch.long, device=device)
-    try:
-        while True:
-            with torch.no_grad():
-                idx_cond = context[:, -block_size:]
-                logits, _= model(idx_cond)
-                logits   = logits[:, -1, :]
-                probs    = F.softmax(logits, dim=-1)
-                idx_next = torch.multinomial(probs, num_samples=1)
-                context  = torch.cat((context, idx_next), dim=1)
-                if context.shape[1] > block_size:
-                    context = context[:, -block_size:]
-                print(decode([idx_next[0].item()]), end='', flush=True)
-    except KeyboardInterrupt:
-        print("\n[Stopped]")
+    print("\n\n[Stopped by user]")
 
 end = time.time()
 print(f"\n[TOTAL] Wall-clock time: {end - start:.1f}s  ({(end - start) / 60:.1f} min)")

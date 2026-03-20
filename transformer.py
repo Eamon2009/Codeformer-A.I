@@ -17,17 +17,18 @@ print(f"[INFO] Using device: {'cuda' if torch.cuda.is_available() else 'cpu'}")
 start = time.time()
 
 # Hyperparameters
-batch_size    = 64
-block_size    = 256
-max_iters     = 5000
-eval_interval = 100
 learning_rate = 3e-4
 device        = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters    = 200
-n_embd        = 384
-n_head        = 6
-n_layer       = 6
 dropout       = 0.2
+batch_size    = 16     # was 64
+block_size    = 128    # was 256
+n_embd        = 128    # was 384
+n_head        = 4      # was 6
+n_layer       = 4      # was 6
+eval_iters    = 50     # was 200
+eval_interval = 200    # was 100
+max_iters     = 3000   # was 5000
 
 print(f"\n[CONFIG] Hyperparameters loaded:")
 print(f"         batch_size={batch_size}, block_size={block_size}")

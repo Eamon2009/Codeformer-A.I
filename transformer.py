@@ -18,7 +18,7 @@ start = time.time()
 
 # Hyperparameters
 learning_rate = 3e-4
-device        = 'cuda' if torch.cuda.is_available() else 'cpu'
+device        = 'cuda' if torch.cuda.is_available() else 'cpu'  #my case cpu
 eval_iters    = 200
 dropout       = 0.2
 batch_size    = 16     # was 64

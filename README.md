@@ -219,9 +219,9 @@ GPT-2 Large             774M          ~40GB text    Strong English
 GPT-3                   175B          ~600GB text   Near-human text
 ```
 
-### Your Specific Situation
+### My Specific Situation
 
-**Recommended CPU config (0.3M parameters):**
+**Recommended for one with CPU config (0.3M parameters):**
 
 ```
 Parameters    :  0.3M
@@ -241,11 +241,11 @@ This is actually fine for a learning project. The model will still learn the sty
 ```
 Parameters    :  10.8M
 Optimal data  :  20 × 10,800,000 = 216M tokens needed
-You have      :  117K tokens
+have      :  117K tokens
 Data ratio    :  0.05%  ← severely undertrained
 ```
 
-Training 10.8M parameters on 117K characters is like hiring 100 experts to read a 10-page document. The capacity is there but there is nothing to fill it with. The model will also take 12-20 hours on your CPU.
+Training 10.8M parameters on 117K characters is like hiring 100 experts to read a 10-page document. The capacity is there but there is nothing to fill it with. The model will also take 12-20 hours estimated  on your CPU.
 
 **The practical takeaway:**
 
@@ -264,7 +264,7 @@ If you want meaningfully better output, the highest-impact thing you can do is *
 - **Output will not compile** — this is a style learner, not a code generator
 
 ---
-# licence
+#s# Licence
 
 MIT
 ---

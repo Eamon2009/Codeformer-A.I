@@ -1,6 +1,7 @@
 # GPT Language Model — Kernel Code Generator
 
 A character-level GPT transformer built from scratch in PyTorch, trained on Linux kernel C source code to generate kernel-style C code character by character. No pre-trained weights. No fine-tuning. Pure architecture and training from zero.
+- Actual Training results 
 <img width="948" height="773" alt="Screenshot 2026-03-20 114641" src="https://github.com/user-attachments/assets/a24b9b18-817d-41cd-b0af-efa42aeee0b4" />
 
 ---

@@ -365,5 +365,5 @@ This does not mean the project failed. The model learned real kernel C style pat
 
 ---
 
-*Built with PyTorch. Architecture based on Andrej Karpathy's Let's build GPT: from scratch*
+*Built with PyTorch. Architecture inspired by Andrej Karpathy's Let's build GPT: from scratch*
 *Trained on Linux kernel source — `kernel/module/core.c` and related files.*

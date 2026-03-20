@@ -180,6 +180,8 @@ The more the loss drops during training, the more coherent the output becomes.
 ---
 
 ## Scaling Laws — And Where Your Model Sits
+<img width="1029" height="705" alt="Screenshot 2026-03-17 171921" src="https://github.com/user-attachments/assets/8d6ab428-1588-4d2b-9009-469ad2c1ec14" />
+
 
 ### What Are Scaling Laws?
 

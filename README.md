@@ -1,8 +1,6 @@
 # GPT Language Model — Kernel Code Generator
 
 A character-level GPT transformer built from scratch in PyTorch, trained on Linux kernel C source code to generate kernel-style C code character by character. No pre-trained weights. No fine-tuning. Pure architecture and training from zero.
-- Actual Training results 
-<img width="948" height="773" alt="Screenshot 2026-03-20 114641" src="https://github.com/user-attachments/assets/a24b9b18-817d-41cd-b0af-efa42aeee0b4" />
 
 ---
 
@@ -15,11 +13,13 @@ A character-level GPT transformer built from scratch in PyTorch, trained on Linu
 5. [How to Run](#how-to-run)
 6. [Configuration](#configuration)
 7. [What to Expect as Output](#what-to-expect-as-output)
-8. [Actual Training Results](#actual-training-results)
-9. [Overfitting — What Happened and Why](#overfitting--what-happened-and-why)
-10. [How Weights Produce Output](#how-weights-produce-output)
-11. [Scaling Laws — And Where Your Model Sits](#scaling-laws--and-where-your-model-sits)
-12. [Known Limitations](#known-limitations)
+8. [Training Results — CPU Run](#training-results--cpu-run)
+9. [Training Results — GPU Run](#training-results--gpu-run)
+10. [CPU vs GPU — Head to Head](#cpu-vs-gpu--head-to-head)
+11. [Overfitting — What Happened and Why](#overfitting--what-happened-and-why)
+12. [How Weights Produce Output](#how-weights-produce-output)
+13. [Scaling Laws — And Where Your Model Sits](#scaling-laws--and-where-your-model-sits)
+14. [Known Limitations](#known-limitations)
 
 ---
 
@@ -69,15 +69,15 @@ It is the same core architecture as GPT, just much smaller and trained on much l
 ```
 cleaned.txt
     ↓
-Characters encoded as integers (vocab size: 95)
+Characters encoded as integers (vocab size: 95–105)
     ↓
-Model trains on sequences of 128 characters at a time
+Model trains on sequences of 128–256 characters at a time
     ↓
-Every 200 steps: loss is measured and printed
+Every 200–250 steps: loss is measured and printed
     ↓
 Best weights saved to best_model.pt whenever val loss improves
     ↓
-After 3000 steps: weights saved, new CMD window opens
+After training: weights saved, new CMD window opens
     ↓
 New window loads weights and streams generated code forever
 ```
@@ -117,17 +117,21 @@ That is it. The script will:
 1. Print a startup banner with device and timestamp
 2. Load and report stats on your dataset
 3. Build the model and print parameter count
-4. Train for 3000 steps, printing progress every 200 steps
+4. Train for the configured number of steps, printing progress at each eval interval
 5. Automatically open a new CMD window with infinite generation when done
 
-**To stop generation:** close the CMD window or press `Ctrl+C` inside it.
+**To stop generation:** close the CMD window or press `Ctrl+C` inside it.  
 **To stop training early:** press `Ctrl+C` in the main window.
 
 ---
 
 ## Configuration
 
-All hyperparameters are at the top of `transformer.py`. The settings below are tuned for a CPU-only machine with limited RAM:
+All hyperparameters are at the top of `transformer.py`.
+
+### CPU Configuration (no GPU)
+
+Tuned for a CPU-only machine with limited RAM:
 
 ```python
 batch_size    = 16      # How many sequences to train on at once
@@ -144,7 +148,7 @@ dropout       = 0.2     # Regularization — prevents memorization
 
 **Parameter count with these settings: 0.83M parameters**
 
-If you have a CUDA GPU, you can scale up:
+### GPU Configuration (CUDA)
 
 ```python
 batch_size    = 64
@@ -153,6 +157,7 @@ n_embd        = 384
 n_head        = 6
 n_layer       = 6
 max_iters     = 5000
+eval_interval = 250
 eval_iters    = 200
 ```
 
@@ -162,7 +167,7 @@ eval_iters    = 200
 
 ## What to Expect as Output
 
-The model is trained on 117,076 characters of Linux kernel C source code. After training, generated output looks roughly like:
+After training, generated output looks roughly like:
 
 ```c
 static int module_get(struct module *mod)
@@ -173,18 +178,18 @@ static int module_get(struct module *mod)
     list_for_each_entry(mod, &modules
 ```
 
-It will look like real kernel C — keywords, brackets, struct patterns, function signatures — all plausible. But the logic will be wrong and it will not compile. This is expected and normal for a model of this size trained on this little data.
+It will look like real kernel C — keywords, brackets, struct patterns, function signatures — all plausible. But the logic will be wrong and it will not compile. This is expected and normal for a model of this size trained on this amount of data.
 
 | Loss Value  | What the output looks like          |
 |-------------|-------------------------------------|
 | 4.0+        | Random characters                   |
-| 2.5 - 3.5   | Recognizable keywords, messy        |
-| 1.8 - 2.5   | Plausible structure, wrong logic    |
+| 2.5 – 3.5   | Recognizable keywords, messy        |
+| 1.8 – 2.5   | Plausible structure, wrong logic    |
 | Below 1.8   | Coherent style, still not runnable  |
 
 ---
 
-## Actual Training Results
+## Training Results — CPU Run
 
 Trained on: AMD Ryzen 5 PRO 3500U (CPU only, no GPU)
 
@@ -222,9 +227,75 @@ Final train   : 0.7820
 
 ---
 
+## Training Results — GPU Run
+
+Trained on: CUDA GPU (Google Colab)
+
+```
+Parameters    : 10.82M  (10,819,689 total)
+Architecture  : 6 layers × 6 heads × 384 embd dim
+Dataset       : 1,896,893 characters
+Vocabulary    : 105 unique characters
+Train tokens  : 1,707,203
+Val tokens    : 189,690
+Training time : 55.8 minutes
+Best val loss : 1.1177  (reached at step 3750)
+Final train   : 0.5069
+```
+
+**Full training log:**
+
+```
+[    0/5000]   0.0%   train=4.7662   val=4.7716   elapsed=30s     ETA=0s      best!
+[  250/5000]   5.0%   train=2.3460   val=2.3397   elapsed=189s    ETA=3579s   best!
+[  500/5000]  10.0%   train=1.5358   val=1.6658   elapsed=356s    ETA=3196s   best!
+[  750/5000]  15.0%   train=1.1732   val=1.3981   elapsed=523s    ETA=2957s   best!
+[ 1000/5000]  20.0%   train=1.0084   val=1.2819   elapsed=690s    ETA=2755s   best!
+[ 1250/5000]  25.0%   train=0.9052   val=1.2211   elapsed=857s    ETA=2567s   best!
+[ 1500/5000]  30.0%   train=0.8301   val=1.1800   elapsed=1023s   ETA=2385s   best!
+[ 1750/5000]  35.0%   train=0.7846   val=1.1740   elapsed=1190s   ETA=2208s   best!
+[ 2000/5000]  40.0%   train=0.7444   val=1.1552   elapsed=1356s   ETA=2032s   best!
+[ 2250/5000]  45.0%   train=0.7075   val=1.1357   elapsed=1522s   ETA=1859s   best!
+[ 2500/5000]  50.0%   train=0.6747   val=1.1300   elapsed=1688s   ETA=1687s   best!
+[ 2750/5000]  55.0%   train=0.6502   val=1.1319   elapsed=1854s   ETA=1516s
+[ 3000/5000]  60.0%   train=0.6350   val=1.1298   elapsed=2020s   ETA=1345s   best!
+[ 3250/5000]  65.0%   train=0.6068   val=1.1198   elapsed=2186s   ETA=1176s   best!
+[ 3500/5000]  70.0%   train=0.5871   val=1.1364   elapsed=2352s   ETA=1007s
+[ 3750/5000]  75.0%   train=0.5724   val=1.1177   elapsed=2517s   ETA=838s    best!
+[ 4000/5000]  80.0%   train=0.5613   val=1.1249   elapsed=2683s   ETA=670s
+[ 4250/5000]  85.0%   train=0.5443   val=1.1206   elapsed=2849s   ETA=502s
+[ 4500/5000]  90.0%   train=0.5292   val=1.1387   elapsed=3015s   ETA=334s
+[ 4750/5000]  95.0%   train=0.5156   val=1.1426   elapsed=3180s   ETA=167s
+[ 4999/5000] 100.0%   train=0.5069   val=1.1298   elapsed=3345s   ETA=0s
+
+[DONE] Training finished in 3345.6s (55.8 min) | Best val loss: 1.1177
+[SAVE] Best weights saved to: /content/best_model.pt
+```
+
+---
+
+## CPU vs GPU — Head to Head
+
+| Metric | CPU Run | GPU Run |
+|---|---|---|
+| Device | AMD Ryzen 5 PRO 3500U | CUDA GPU |
+| Parameters | 0.83M | 10.82M |
+| Dataset size | 117,076 chars | 1,896,893 chars |
+| Vocabulary | 95 chars | 105 chars |
+| Best val loss | 2.3924 | **1.1177** |
+| Training time | 36 min | 55.8 min |
+| Best step | 1400 / 3000 | 3750 / 5000 |
+| Overfitting? | Yes — after step 1400 | Mild — val stays stable |
+
+The GPU run demonstrates exactly what scaling laws predict: **13× more parameters + 16× more data = dramatically better loss** with only 1.5× the training time. A val loss of 1.1177 puts the output firmly in the *coherent style* range, a full tier above the CPU run's *plausible but wrong* range.
+
+---
+
 ## Overfitting — What Happened and Why
 
-Looking at the training log, something important happened after step 1400:
+### CPU Run — Severe Overfitting
+
+Looking at the CPU training log, something important happened after step 1400:
 
 ```
 Step 1400:  train=1.1895   val=2.3924   ← val loss at its lowest (best)
@@ -232,25 +303,26 @@ Step 1600:  train=1.0938   val=2.4409   ← val loss starts rising
 Step 3000:  train=0.7820   val=2.4854   ← train keeps falling, val keeps rising
 ```
 
-**This is textbook overfitting.**
+This is textbook overfitting. Up to step 1400 the model was learning general patterns. After step 1400, the train loss kept falling but the val loss started rising — the model stopped generalizing and started memorizing specific lines from the training text.
 
-The model has two jobs during training — learn general patterns from the data, and not just memorize the training examples. Up to step 1400 it was doing both. After step 1400, the train loss kept falling but the val loss started rising. This means the model stopped learning general patterns and started memorizing the specific training text.
+**Why this happened:** The dataset (117K characters) is too small for even a 0.83M parameter model. The model has more capacity than the data can fill.
 
-**In plain terms:**
+### GPU Run — Much Better Generalization
+
+The GPU run tells a very different story:
 
 ```
-Before step 1400 → model is learning kernel C patterns
-After  step 1400 → model is memorizing specific lines
-                   from cleaned.txt word for word
+Step 2500:  train=0.6747   val=1.1300   ← best at this point
+Step 2750:  train=0.6502   val=1.1319   ← tiny uptick, recovers
+Step 3750:  train=0.5724   val=1.1177   ← new best, still improving
+Step 4999:  train=0.5069   val=1.1298   ← mild divergence at the end
 ```
 
-**Why this happened:**
+The val loss stays tightly clustered between 1.11 and 1.14 for the last 2500 steps. The model never truly overfit because the dataset (1.9M characters) was large enough to keep it generalizing throughout training.
 
-The dataset is too small (117K characters) for even a 0.83M parameter model. The model has more capacity than the data can fill, so after enough steps it starts memorizing instead of generalizing.
+### The Fix — Save Best Weights, Not Final Weights
 
-**The fix — save best weights, not final weights:**
-
-The current script saves weights at the end of training (step 3000). But the best weights were at step 1400. Add this one change to always keep the best version:
+The current script saves weights at the end of training. But the best weights are always at the lowest val loss checkpoint. Add this to always keep the best version:
 
 ```python
 # Inside the eval checkpoint block:
@@ -260,31 +332,31 @@ if losses['val'] < best_val_loss:
     improved = " << best!"
 ```
 
-Then load `best_model.pt` for generation instead of the final weights. This gives noticeably better output quality.
+Then load `best_model.pt` for generation instead of the final weights. This gives noticeably better output quality — especially on the CPU run where the gap between best and final is large.
 
 **Other ways to reduce overfitting:**
 
 - Add more training data — most effective, aim for 1M+ characters
 - Increase dropout from 0.2 to 0.3 or 0.4
 - Reduce model size further
-- Use early stopping — stop training when val loss stops improving
+- Use early stopping — stop training when val loss stops improving for N evals
 
 ---
 
 ## How Weights Produce Output
 
-After training, the model is frozen. The weights file is just a collection of numbers — 0.83 million of them — that encode everything the model learned from your kernel C code.
+After training, the model is frozen. The weights file is just a collection of numbers — 0.83M or 10.82M of them — that encode everything the model learned from your kernel C code.
 
 **The generation loop step by step:**
 
 ```
 Step 1 — Start with a seed token (zero = start of text)
               ↓
-Step 2 — Feed it through all 4 transformer layers
+Step 2 — Feed it through all transformer layers
          Each layer does matrix multiplications
          using the saved weight numbers
               ↓
-Step 3 — Output is 95 numbers (one per vocab character)
+Step 3 — Output is N numbers (one per vocab character)
          Each number = probability of that character being next
          e.g.  's' = 0.34   '{' = 0.21   'i' = 0.18
               ↓
@@ -297,17 +369,13 @@ Step 5 — That character becomes the new input
 Step 6 — Repeat forever
 ```
 
-**Why output is different every run:**
+**Why output is different every run:** The sampling step (`torch.multinomial`) picks randomly from the probability distribution. Same weights, different random draws = different output each time. To get reproducible output, add `torch.manual_seed(42)` before generation.
 
-The sampling step (`torch.multinomial`) picks randomly from the probability distribution. Same weights, different random draws = different output each time. To get reproducible output add `torch.manual_seed(42)` before generation.
-
-**The weights are a compressed snapshot** of every pattern seen in 117K characters of kernel C — stored as 0.83 million floating point numbers.
+The weights are a compressed snapshot of every pattern seen in the training data — stored as millions of floating point numbers.
 
 ---
 
 ## Scaling Laws — And Where Your Model Sits
-<img width="1029" height="705" alt="Screenshot 2026-03-17 171921" src="https://github.com/user-attachments/assets/d376124c-08de-4668-be8d-823e1c05176b" />
-
 
 ### What Are Scaling Laws?
 
@@ -327,44 +395,43 @@ Compute (C)     →  Parameters × Data × Training steps
 
 All three need to grow together. Improving only one gives diminishing returns.
 
-### Where Your Model Sits
+### Where These Models Sit
 
 ```
-Model                    Parameters    Data             Quality
-───────────────────────────────────────────────────────────────
-Your model (this run)    0.83M         117K chars        Learning shapes
-Your model (full GPU)    10.8M         117K chars        Severely overtrained
-GPT-2 Small              117M          ~40GB text        Coherent English
-GPT-2 Large              774M          ~40GB text        Strong English
-GPT-3                    175B          ~600GB text       Near-human text
+Model                    Parameters    Data              Best Val Loss   Quality
+────────────────────────────────────────────────────────────────────────────────
+This project (CPU)       0.83M         117K chars        2.3924          Plausible style
+This project (GPU)       10.82M        1.9M chars        1.1177          Coherent style
+GPT-2 Small              117M          ~40GB text        —               Coherent English
+GPT-2 Large              774M          ~40GB text        —               Strong English
+GPT-3                    175B          ~600GB text       —               Near-human text
 ```
 
-### Specific Numbers
+### Data Efficiency — CPU vs GPU Run
 
 ```
-Parameters       :  0.83M
-Training data    :  117,076 characters ≈ 117K tokens
-Optimal data     :  20 × 830,000 = 16.6M tokens needed
-Data you have    :  117K / 16.6M = 0.7% of what is optimal
+                    CPU Run         GPU Run
+────────────────────────────────────────────────────────
+Parameters        : 0.83M           10.82M
+Training data     : 117K tokens     1.9M tokens
+Optimal data      : 16.6M tokens    216M tokens
+Data you have     : 0.7% optimal    0.9% optimal
 ```
 
- Model has far more capacity than my dataset can fill. This is exactly why overfitting appeared at step 1400 — the model ran out of new patterns to learn and started memorizing instead.
-
-This does not mean the project failed. The model learned real kernel C style patterns in 36 minutes on a CPU with no GPU. The val loss dropped from 4.56 to 2.39 — that is real learning happening.
-
+Both runs are well below optimal data — but the GPU run has far more of both, which is exactly why it generalizes much better. The improvement from val loss 2.39 → 1.12 is a direct demonstration of scaling laws in action on your own hardware.
 
 ---
 
 ## Known Limitations
 
-- **CPU only** — no CUDA GPU means training is slow and larger configs are impractical
-- **Small dataset** — 117K characters causes overfitting even at 0.83M parameters
-- **Overfitting after step 1400** — final weights are not the best weights; see overfitting section
+- **CPU run is slow** — no CUDA GPU means training is slow and larger configs are impractical
+- **Both runs are data-starved** — even the GPU run at 1.9M characters is under 1% of what would be optimal for a 10.82M parameter model
+- **CPU run overfits after step 1400** — use `best_model.pt`, not the final weights
 - **Character-level** — the model learns characters not words or concepts, so it cannot reason about what the code does
 - **Output will not compile** — this is a style learner, not a functional code generator
 - **No memory between runs** — each generation starts from scratch with no context
 
 ---
 
-*Built with PyTorch. Architecture inspired by Andrej Karpathy's Let's build GPT: from scratch*
+*Built with PyTorch. Architecture inspired by Andrej Karpathy's makemore / Let's build GPT series.*  
 *Trained on Linux kernel source — `kernel/module/core.c` and related files.*
